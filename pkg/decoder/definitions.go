@@ -2220,8 +2220,6 @@ type GeoCoordinates struct {
 }
 
 func (g GeoCoordinates) Decode() (lon float64, lat float64) {
-	// TODO what happens for negative values? Probably in this case, the first byte has to be 0xff
-	// check the leftmost bit in the first byte:
 	fillByte := byte(0x00)
 	if (g.Latitude[0] & 0x80) > 0 {
 		fillByte = 0xff
@@ -2236,22 +2234,42 @@ func (g GeoCoordinates) Decode() (lon float64, lat float64) {
 	bLon := bytes.NewBuffer([]byte{fillByte, g.Longitude[0], g.Longitude[1], g.Longitude[2]})
 	var lonVal int32
 	binary.Read(bLon, binary.BigEndian, &lonVal)
-	// lon and lat are DDDMM.M * 10, probably the most inconvenient and uncommon format for lon/lat
-	lonStr := fmt.Sprintf("%+07d", lonVal)
-	latStr := fmt.Sprintf("%+07d", latVal)
+
+	// lon and lat are encoded as integers multiples of ±DDDMM.M (longitude) and ±DDMM.M (latitude)
+	// where ±DDD/±DD denotes degrees and MM.M denotes minutes
+	// Use absolute values for string parsing, then apply original sign
+	lonStr := fmt.Sprintf("%06d", int32(math.Abs(float64(lonVal)))) // DDDMMM format (6 digits)
+	latStr := fmt.Sprintf("%05d", int32(math.Abs(float64(latVal)))) // DDMMM format (5 digits)
+
+	// Remember the original signs
+	lonNegative := lonVal < 0
+	latNegative := latVal < 0
+
 	// log.Printf("lonstr: %v", lonStr)
-	if len(lonStr) == 7 && len(latStr) == 7 {
-		if deg, err := strconv.ParseInt(lonStr[0:4], 10, 32); err == nil {
-			if minTen, err := strconv.ParseInt(lonStr[4:7], 10, 32); err == nil {
+	// Parse longitude: DDDMM.M format (DDD degrees + MM.M minutes)
+	if len(lonStr) == 6 {
+		if deg, err := strconv.ParseInt(lonStr[0:3], 10, 32); err == nil {
+			if minTen, err := strconv.ParseInt(lonStr[3:6], 10, 32); err == nil {
 				lon = float64(deg) + (float64(minTen)/10.0)/60.0
-			}
-		}
-		if deg, err := strconv.ParseInt(latStr[0:4], 10, 32); err == nil {
-			if minTen, err := strconv.ParseInt(latStr[4:7], 10, 32); err == nil {
-				lat = float64(deg) + (float64(minTen)/10.0)/60.0
+				if lonNegative {
+					lon = -lon
+				}
 			}
 		}
 	}
+
+	// Parse latitude: DDMM.M format (DD degrees + MM.M minutes)
+	if len(latStr) == 5 {
+		if deg, err := strconv.ParseInt(latStr[0:2], 10, 32); err == nil {
+			if minTen, err := strconv.ParseInt(latStr[2:5], 10, 32); err == nil {
+				lat = float64(deg) + (float64(minTen)/10.0)/60.0
+				if latNegative {
+					lat = -lat
+				}
+			}
+		}
+	}
+
 	return
 }
 
@@ -2275,7 +2293,7 @@ func (g *GeoCoordinates) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	// TODO
+
 	degLon := int(math.Trunc(s.Longitude))
 	degLat := int(math.Trunc(s.Latitude))
 	minTenLon := int(math.Round((s.Longitude - math.Trunc(s.Longitude)) * 600))

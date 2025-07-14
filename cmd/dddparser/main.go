@@ -33,7 +33,7 @@ func main() {
 
 	// Check that inputList and input are mutually exclusive
 	if *inputList != "" && *input != "" {
-		log.Fatal("inputList and input are mutually exclusive")
+		log.Fatal("input-list and input are mutually exclusive")
 	}
 
 	if *inputList != "" {

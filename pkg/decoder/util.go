@@ -34,6 +34,13 @@ func bytesToString(b []byte) string {
 
 // decodeWithCodePage decodes a byte slice with the given code page, returns the trimmed decoded string
 func decodeWithCodePage(codePage byte, data []byte) (string, error) {
+
+	if codePage == 255 {
+		// codepage 255 means empty/unassigned string
+		// https://github.com/jugglingcats/tachograph-reader/issues/56#issuecomment-647665548
+		return "", nil
+	}
+
 	ok := false
 	for i := 0; i < len(data); i++ {
 		if data[i] > 0 && data[i] < 255 {
@@ -57,6 +64,11 @@ func decodeWithCodePage(codePage byte, data []byte) (string, error) {
 	// 85: KOI8-U
 	var cmap *charmap.Charmap
 	switch codePage {
+	case 0:
+		// should be ASCII, according to
+		// https://github.com/jugglingcats/tachograph-reader/blob/master/src/regions/CodePageStringRegion.cs
+		// but no charmap.ASCII
+		cmap = charmap.ISO8859_1 // same as ASCII but has 128-255 chars
 	case 1:
 		cmap = charmap.ISO8859_1
 	case 2:

@@ -10,8 +10,8 @@ import (
 	"os"
 	"strings"
 
-	_ "github.com/kyburz-switzerland-ag/tachoparser/internal/pkg/certificates"
-	"github.com/kyburz-switzerland-ag/tachoparser/pkg/decoder"
+	_ "github.com/traconiq/tachoparser/internal/pkg/certificates"
+	"github.com/traconiq/tachoparser/pkg/decoder"
 )
 
 var (

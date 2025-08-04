@@ -1,4 +1,4 @@
-module github.com/kyburz-switzerland-ag/tachoparser
+module github.com/traconiq/tachoparser
 
 go 1.19
 

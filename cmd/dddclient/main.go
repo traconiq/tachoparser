@@ -8,14 +8,14 @@ import (
 	"log"
 	"os"
 
-	pb "github.com/kyburz-switzerland-ag/tachoparser/pkg/proto"
+	pb "github.com/traconiq/tachoparser/pkg/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
 /**
- * author: tr <thorsten.riess@kyburz-switzerland.ch>
+ * author: tr <thorsten.riess@traconiq.ch>
  */
 
 var (

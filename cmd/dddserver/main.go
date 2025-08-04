@@ -16,9 +16,9 @@ import (
 
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-sockaddr/template"
-	_ "github.com/kyburz-switzerland-ag/tachoparser/internal/pkg/certificates"
-	"github.com/kyburz-switzerland-ag/tachoparser/pkg/decoder"
-	pb "github.com/kyburz-switzerland-ag/tachoparser/pkg/proto"
+	_ "github.com/traconiq/tachoparser/internal/pkg/certificates"
+	"github.com/traconiq/tachoparser/pkg/decoder"
+	pb "github.com/traconiq/tachoparser/pkg/proto"
 	"google.golang.org/grpc"
 	"gopkg.in/alexcesaro/statsd.v2"
 )

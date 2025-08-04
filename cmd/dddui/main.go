@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/kyburz-switzerland-ag/tachoparser/pkg/decoder"
 	"github.com/ncruces/zenity"
+	"github.com/traconiq/tachoparser/pkg/decoder"
 )
 
 const defaultPath = ``

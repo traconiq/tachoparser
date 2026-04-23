@@ -1374,7 +1374,7 @@ func (s *server) ParseVu(ctx context.Context, req *pb.ParseVuRequest) (*pb.Parse
 				Signature: rec.Signature,
 			}
 		}
-		vuEventsAndFaults2[i] = &pb.VuEventsAndFaultsSecondGen{
+		vuEventsAndFaults2V2[i] = &pb.VuEventsAndFaultsSecondGenV2{
 			Verified: r.Verified,
 			VuFaultRecordArray: &pb.VuFaultRecordArray{
 				RecordType:  uint32(r.VuFaultRecordArray.RecordType),

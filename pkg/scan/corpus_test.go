@@ -151,3 +151,61 @@ func TestScanCardCorpus(t *testing.T) {
 		})
 	}
 }
+
+// TestDetectCorpus checks the framing sniffer against files whose kind we know
+// from the archive naming convention, so tooling handed a bare file can pick
+// the right walker.
+func TestDetectCorpus(t *testing.T) {
+	vu, card := corpusFiles(t)
+	for _, path := range vu {
+		if got := scan.Detect(read(t, path)); got != scan.KindVu {
+			t.Errorf("%s: Detect = %q, want %q", filepath.Base(path), got, scan.KindVu)
+		}
+	}
+	for _, path := range card {
+		if got := scan.Detect(read(t, path)); got != scan.KindCard {
+			t.Errorf("%s: Detect = %q, want %q", filepath.Base(path), got, scan.KindCard)
+		}
+	}
+}
+
+// TestScanDispatches checks that the kind-agnostic entry point reaches the same
+// verdict as calling the right walker directly.
+func TestScanDispatches(t *testing.T) {
+	vu, card := corpusFiles(t)
+	for _, path := range append(append([]string{}, vu...), card...) {
+		data := read(t, path)
+		got, gotErr := scan.Scan(data)
+		var want *scan.Report
+		var wantErr error
+		if scan.Detect(data) == scan.KindCard {
+			want, wantErr = scan.ScanCard(data)
+		} else {
+			want, wantErr = scan.ScanVu(data)
+		}
+		if (gotErr == nil) != (wantErr == nil) || got.Kind != want.Kind || len(got.Blocks) != len(want.Blocks) {
+			t.Errorf("%s: Scan disagrees with the direct walker", filepath.Base(path))
+		}
+	}
+}
+
+func TestDetectRejectsRubbish(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		data []byte
+	}{
+		{"empty", nil},
+		{"too short", []byte{0x76}},
+		{"not a ddd file", []byte("this is a text file, not a download")},
+		{"zeros", make([]byte, 64)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := scan.Detect(c.data); got != scan.KindUnknown {
+				t.Errorf("Detect = %q, want unknown", got)
+			}
+			if _, err := scan.Scan(c.data); err == nil {
+				t.Error("Scan accepted something that is not a download")
+			}
+		})
+	}
+}

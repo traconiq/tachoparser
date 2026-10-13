@@ -128,6 +128,12 @@ type Card struct {
 	MemberStateCertificateFirstGen                                        CertificateFirstGen                                 `tlv:"tag=0xc10800" json:"member_state_certificate,omitempty"`
 	CACertificate                                                         CertificateSecondGen                                `tlv:"tag=0xc10802" json:"ca_certificate,omitempty"`
 	LinkCertificateSecondGen                                              CertificateSecondGen                                `tlv:"tag=0xc10902" json:"link_certificate,omitempty"`
+	// CertificateChainFirstGen and CertificateChainSecondGen tell whether the certificate the
+	// signatures are checked against chains to the European root certificate (ERCA): "valid",
+	// "invalid" or "ca_not_found", empty without data of that generation. "verified" on a block
+	// only says that the block matches its signature under that certificate.
+	CertificateChainFirstGen  string `json:"certificate_chain_1,omitempty"`
+	CertificateChainSecondGen string `json:"certificate_chain_2,omitempty"`
 }
 
 func (c *Card) SignCertificateFirstGen() CertificateFirstGen {
@@ -147,32 +153,12 @@ func (c *Card) SignCertificateFirstGen() CertificateFirstGen {
 func (c *Card) SignCertificateSecondGen() CertificateSecondGen {
 	// not quite sure about the order, does the link certificate require the ca certificate (as given in the data) or the other way around, or are those independent?
 	// we try to decode ca first, then link, then ca again, just in case
-	if err := c.CACertificate.Decode(); err == nil {
-		if _, ok := PKsSecondGen[c.CACertificate.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-			PKsSecondGen[c.CACertificate.DecodedCertificate.CertificateBody.CertificateHolderReference] = *c.CACertificate.DecodedCertificate
-		}
-	}
-	if err := c.LinkCertificateSecondGen.Decode(); err == nil {
-		if _, ok := PKsSecondGen[c.LinkCertificateSecondGen.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-			PKsSecondGen[c.LinkCertificateSecondGen.DecodedCertificate.CertificateBody.CertificateHolderReference] = *c.LinkCertificateSecondGen.DecodedCertificate
-		}
-	}
-	if err := c.CACertificate.Decode(); err == nil {
-		if _, ok := PKsSecondGen[c.CACertificate.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-			PKsSecondGen[c.CACertificate.DecodedCertificate.CertificateBody.CertificateHolderReference] = *c.CACertificate.DecodedCertificate
-		}
-	}
+	addTrustedSecondGen(&c.CACertificate)
+	addTrustedSecondGen(&c.LinkCertificateSecondGen)
+	addTrustedSecondGen(&c.CACertificate)
 	// the mutual auth certification is probably not needed here, we try to decode it anyway
-	if err := c.CardMACertificate.Decode(); err == nil {
-		if _, ok := PKsSecondGen[c.CardMACertificate.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-			PKsSecondGen[c.CardMACertificate.DecodedCertificate.CertificateBody.CertificateHolderReference] = *c.CardMACertificate.DecodedCertificate
-		}
-	}
-	if err := c.CardSignCertificate.Decode(); err == nil {
-		if _, ok := PKsSecondGen[c.CardSignCertificate.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-			PKsSecondGen[c.CardSignCertificate.DecodedCertificate.CertificateBody.CertificateHolderReference] = *c.CardSignCertificate.DecodedCertificate
-		}
-	}
+	addTrustedSecondGen(&c.CardMACertificate)
+	addTrustedSecondGen(&c.CardSignCertificate)
 	return c.CardSignCertificate
 }
 
@@ -201,6 +187,9 @@ type Vu struct {
 	VuTechnicalDataFirstGen    []VuTechnicalDataFirstGen    `tv:"tag=0x7605" json:"vu_technical_data_1"`
 	VuTechnicalDataSecondGen   []VuTechnicalDataSecondGen   `tv:"tag=0x7625" json:"vu_technical_data_2"`
 	VuTechnicalDataSecondGenV2 []VuTechnicalDataSecondGenV2 `tv:"tag=0x7635" json:"vu_technical_data_2_v2"`
+	// see Card
+	CertificateChainFirstGen  string `json:"certificate_chain_1,omitempty"`
+	CertificateChainSecondGen string `json:"certificate_chain_2,omitempty"`
 }
 
 // SignCertificateFirstGen returns the CertificateFirstGen to verify the signature of the first generation blocks in the Vu data
@@ -227,54 +216,51 @@ func (v *Vu) SignCertificateSecondGen() CertificateSecondGen {
 	if len(v.VuOverviewSecondGen.VuCertificateRecordArray.Records) == 0 && len(v.VuOverviewSecondGenV2.VuCertificateRecordArray.Records) == 0 {
 		return CertificateSecondGen{}
 	}
-	if len(v.VuOverviewSecondGen.MemberStateCertificateRecordArray.Records) > 0 {
-		// *SHOULD* be only one
-		for _, c := range v.VuOverviewSecondGen.MemberStateCertificateRecordArray.Records {
-			dc := CertificateSecondGen(c)
-			if err := dc.Decode(); err == nil {
-				if _, ok := PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok { // we could check for validity here. However, the validity check seems broken, at least for the data tested (i.e. the member state certificate given here is signed, but the signature cannot be verified vs the ca).
-					PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference] = *dc.DecodedCertificate
-				}
-			}
-		}
+	// *SHOULD* be only one member state certificate and one vu certificate
+	for _, c := range v.VuOverviewSecondGen.MemberStateCertificateRecordArray.Records {
+		dc := CertificateSecondGen(c)
+		addTrustedSecondGen(&dc)
 	}
-	if len(v.VuOverviewSecondGenV2.MemberStateCertificateRecordArray.Records) > 0 {
-		// *SHOULD* be only one
-		for _, c := range v.VuOverviewSecondGenV2.MemberStateCertificateRecordArray.Records {
-			dc := CertificateSecondGen(c)
-			if err := dc.Decode(); err == nil {
-				if _, ok := PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok { // we could check for validity here. However, the validity check seems broken, at least for the data tested (i.e. the member state certificate given here is signed, but the signature cannot be verified vs the ca).
-					PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference] = *dc.DecodedCertificate
-				}
-			}
-		}
+	for _, c := range v.VuOverviewSecondGenV2.MemberStateCertificateRecordArray.Records {
+		dc := CertificateSecondGen(c)
+		addTrustedSecondGen(&dc)
 	}
 	var cert CertificateSecondGen
 	for i, c := range v.VuOverviewSecondGen.VuCertificateRecordArray.Records {
-		// *SHOULD* be only one
 		dc := CertificateSecondGen(c)
-		if err := dc.Decode(); err == nil {
-			if _, ok := PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-				PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference] = *dc.DecodedCertificate
-			}
-		}
+		addTrustedSecondGen(&dc)
 		if i == 0 {
 			cert = dc
 		}
 	}
 	for i, c := range v.VuOverviewSecondGenV2.VuCertificateRecordArray.Records {
-		// *SHOULD* be only one
 		dc := CertificateSecondGen(c)
-		if err := dc.Decode(); err == nil {
-			if _, ok := PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference]; !ok {
-				PKsSecondGen[dc.DecodedCertificate.CertificateBody.CertificateHolderReference] = *dc.DecodedCertificate
-			}
-		}
+		addTrustedSecondGen(&dc)
 		if i == 0 {
 			cert = dc
 		}
 	}
 	return cert
+}
+
+// addTrustedSecondGen decodes a certificate found in the data and adds it to the certificate
+// store, so it can be used as certificate authority for the next certificate - but only when its
+// signature holds against a key already in the store (the European root and the member state
+// certificates from dtc.jrc.ec.europa.eu, or a certificate added by this function). A certificate
+// that does not verify, or that signs itself, is still decoded, but it never becomes an authority,
+// so it cannot make the certificate chain look valid. The block signatures are checked against
+// the signing certificate either way.
+func addTrustedSecondGen(c *CertificateSecondGen) {
+	if err := c.Decode(); err != nil || c.DecodedCertificate == nil || !c.DecodedCertificate.Valid {
+		return
+	}
+	body := c.DecodedCertificate.CertificateBody
+	if body.CertificateHolderReference == body.CertificateAuthorityReference {
+		return
+	}
+	if _, ok := PKsSecondGen[body.CertificateHolderReference]; !ok {
+		PKsSecondGen[body.CertificateHolderReference] = *c.DecodedCertificate
+	}
 }
 
 type VuOverviewFirstGen struct {

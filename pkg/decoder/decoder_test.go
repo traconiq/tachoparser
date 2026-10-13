@@ -886,6 +886,8 @@ var expectedVuOverviewFirstGen = VuOverviewFirstGen{
 }
 var expectedVu = Vu{
 	VuOverviewFirstGen: expectedVuOverviewFirstGen,
+	// the certificate authority of the test certificate is not in the store
+	CertificateChainFirstGen: CertificateChainCaNotFound,
 }
 
 var testCasesVuOverviewFirstGen = []struct {
@@ -1354,6 +1356,8 @@ var expectedVuOverviewSecondGen = VuOverviewSecondGen{
 }
 var expectedVuSecondGen = Vu{
 	VuOverviewSecondGen: expectedVuOverviewSecondGen,
+	// the test certificates are not real certificates, so the chain cannot hold
+	CertificateChainSecondGen: CertificateChainInvalid,
 }
 
 var testCasesVuOverviewSecondGen = []struct {

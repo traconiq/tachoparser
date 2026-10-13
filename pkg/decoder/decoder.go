@@ -319,6 +319,12 @@ func UnmarshalTV(data []byte, inter interface{}) (verified bool, err error) {
 		start, length int
 		method        reflect.Method
 		field         reflect.Value
+		// blocks that may occur more than once (slice fields) are parsed into a new value that is
+		// then copied into the slice. The result of the verification must be written to the element
+		// in the slice, not to that value, so we remember the slice field and the element index.
+		// The element is looked up only after parsing, as appending may move the backing array.
+		slice reflect.Value
+		index int
 	}
 	verifyRanges := make([]verifyRange, 0)
 	globalSizes := make(map[string]int)
@@ -357,8 +363,12 @@ func UnmarshalTV(data []byte, inter interface{}) (verified bool, err error) {
 			if err != nil {
 				return false, err
 			}
+			var sliceField reflect.Value
+			sliceIndex := -1
 			if field.Kind() == reflect.Slice {
 				field.Set(reflect.Append(field, parseIntoField))
+				sliceField = field
+				sliceIndex = field.Len() - 1
 			}
 			if len(data[currentPos:]) >= actualSizeBytes {
 				if vm, ok := verifyFirstGenMethods[currentTag]; ok {
@@ -368,6 +378,8 @@ func UnmarshalTV(data []byte, inter interface{}) (verified bool, err error) {
 						length: actualSizeBytes,
 						method: vm,
 						field:  parseIntoField,
+						slice:  sliceField,
+						index:  sliceIndex,
 					})
 				}
 				if vm, ok := verifySecondGenMethods[currentTag]; ok {
@@ -377,6 +389,8 @@ func UnmarshalTV(data []byte, inter interface{}) (verified bool, err error) {
 						length: actualSizeBytes,
 						method: vm,
 						field:  parseIntoField,
+						slice:  sliceField,
+						index:  sliceIndex,
 					})
 				}
 				currentPos += actualSizeBytes
@@ -451,7 +465,11 @@ func UnmarshalTV(data []byte, inter interface{}) (verified bool, err error) {
 				if success && err == nil {
 					ver = true
 				}
-				if verifiedField := vr.field.FieldByName("Verified"); verifiedField.IsValid() && verifiedField.CanSet() {
+				target := vr.field
+				if vr.slice.IsValid() && vr.index >= 0 && vr.index < vr.slice.Len() {
+					target = vr.slice.Index(vr.index)
+				}
+				if verifiedField := target.FieldByName("Verified"); verifiedField.IsValid() && verifiedField.CanSet() {
 					verifiedField.SetBool(ver)
 				}
 				if !verificationStarted {

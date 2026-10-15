@@ -156,6 +156,8 @@ func UnmarshalTLV(data []byte, inter interface{}) (verified bool, err error) {
 	if err := signCertificateSecondGen.Decode(); err == nil {
 		signCertificateSecondGenValid = true
 	}
+	setCertificateChain(v, "CertificateChainFirstGen", certificateChainFirstGen(signCertificateFirstGen, signCertificateFirstGenValid))
+	setCertificateChain(v, "CertificateChainSecondGen", certificateChainSecondGen(signCertificateSecondGen, signCertificateSecondGenValid))
 	verified = false
 	verificationStarted := false
 	// second pass - signatures
@@ -419,6 +421,8 @@ func UnmarshalTV(data []byte, inter interface{}) (verified bool, err error) {
 	if err := signCertificateSecondGen.Decode(); err == nil {
 		signCertificateSecondGenValid = true
 	}
+	setCertificateChain(v, "CertificateChainFirstGen", certificateChainFirstGen(signCertificateFirstGen, signCertificateFirstGenValid))
+	setCertificateChain(v, "CertificateChainSecondGen", certificateChainSecondGen(signCertificateSecondGen, signCertificateSecondGenValid))
 	verificationStarted := false
 	verified = false
 	if signCertificateFirstGenValid || signCertificateSecondGenValid {
@@ -1292,4 +1296,69 @@ func parseASN1Field(field reflect.Value, fieldType reflect.Type, size int, minSi
 		return 0, 0, 0, fmt.Errorf("unsupported kind: %v", fieldType.Kind())
 	}
 	return actualSize, actualSizeBytes, sizeVal, nil
+}
+
+// Results of the certificate chain check, see Card.CertificateChainFirstGen.
+const (
+	CertificateChainValid      = "valid"
+	CertificateChainInvalid    = "invalid"
+	CertificateChainCaNotFound = "ca_not_found"
+)
+
+// certificateChainFirstGen gives the chain result for a first generation signing certificate.
+// Such a certificate only decodes when its certificate authority is in the store and has signed
+// it, so a decoded certificate is a valid one.
+func certificateChainFirstGen(cert CertificateFirstGen, decoded bool) string {
+	if noCertificateData(cert.Certificate[:]) {
+		return ""
+	}
+	if decoded {
+		return CertificateChainValid
+	}
+	if _, ok := PKsFirstGen[binary.BigEndian.Uint64(cert.Certificate[186:194])]; !ok {
+		return CertificateChainCaNotFound
+	}
+	return CertificateChainInvalid
+}
+
+// certificateChainSecondGen gives the chain result for a second generation signing certificate.
+// CertificateSecondGen.Decode computes whether the certificate authority has signed the
+// certificate (Valid), but does not fail when it has not, so the result is checked here.
+func certificateChainSecondGen(cert CertificateSecondGen, decoded bool) string {
+	if noCertificateData(cert.Certificate) {
+		return ""
+	}
+	if !decoded || cert.DecodedCertificate == nil {
+		return CertificateChainInvalid
+	}
+	body := cert.DecodedCertificate.CertificateBody
+	if body.CertificateHolderReference == body.CertificateAuthorityReference {
+		// only a root certificate signs itself, never a card or vehicle unit certificate
+		return CertificateChainInvalid
+	}
+	if _, ok := PKsSecondGen[body.CertificateAuthorityReference]; !ok {
+		return CertificateChainCaNotFound
+	}
+	if cert.DecodedCertificate.Valid {
+		return CertificateChainValid
+	}
+	return CertificateChainInvalid
+}
+
+// noCertificateData is true for a certificate field the data did not fill (only 0x00 or 0xff
+// bytes), the same rule the certificates use for their JSON.
+func noCertificateData(b []byte) bool {
+	for _, x := range b {
+		if x > 0 && x < 255 {
+			return false
+		}
+	}
+	return true
+}
+
+// setCertificateChain writes a chain result to the top level structure when it has the field.
+func setCertificateChain(v reflect.Value, name, result string) {
+	if f := v.FieldByName(name); f.IsValid() && f.CanSet() && f.Kind() == reflect.String {
+		f.SetString(result)
+	}
 }
